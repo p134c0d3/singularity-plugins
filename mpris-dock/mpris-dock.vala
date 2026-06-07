@@ -38,14 +38,28 @@ namespace MprisDock {
 
         private HashMap<string, Entry> _by_app = new HashMap<string, Entry>();
         private uint _poll_id = 0;
+        private DBusConnection? _conn = null;
+        private uint _props_sub_id = 0;
 
         public Extension() {
             poll();
+            // The 2s poll catches players appearing/disappearing and cover art.
             _poll_id = GLib.Timeout.add(2000, () => { poll(); return GLib.Source.CONTINUE; });
+            // React instantly to playback-status / metadata changes from any
+            // player instead of waiting for the next poll tick (which made the
+            // play/pause icon and controls update late).
+            try {
+                _conn = Bus.get_sync(BusType.SESSION);
+                _props_sub_id = _conn.signal_subscribe(
+                    null, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                    "/org/mpris/MediaPlayer2", null, DBusSignalFlags.NONE,
+                    (conn, sender, path, iface, sig, args) => { poll(); });
+            } catch (Error e) {}
         }
 
         ~Extension() {
             if (_poll_id != 0) GLib.Source.remove(_poll_id);
+            if (_conn != null && _props_sub_id != 0) _conn.signal_unsubscribe(_props_sub_id);
         }
 
         // ── DockItemExtension ────────────────────────────────────────────────
