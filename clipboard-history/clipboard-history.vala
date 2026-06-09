@@ -10,6 +10,13 @@ public void peas_register_types(TypeModule module) {
     objmodule.register_extension_type(typeof(Singularity.Plugin), typeof(ClipboardHistoryPlugin));
 }
 
+private class ClipEntry : Object {
+    public string? text;
+    public Gdk.Texture? image;
+    public ClipEntry.with_text(string t) { text = t; }
+    public ClipEntry.with_image(Gdk.Texture i) { image = i; }
+}
+
 public class ClipboardHistoryPlugin : Object, Singularity.Plugin {
     private const int MAX_ENTRIES = 20;
     private const int PREVIEW_LEN = 60;
@@ -19,7 +26,7 @@ public class ClipboardHistoryPlugin : Object, Singularity.Plugin {
     private ListBox list_box;
     private Gdk.Clipboard clipboard;
     private ulong changed_handler = 0;
-    private List<string> history = new List<string>();
+    private List<ClipEntry> history = new List<ClipEntry>();
 
     public void activate(PluginContext ctx) {
         this.context = ctx;
@@ -47,7 +54,7 @@ public class ClipboardHistoryPlugin : Object, Singularity.Plugin {
         clear_btn.halign = Align.END;
         clear_btn.margin_end = 8;
         clear_btn.clicked.connect(() => {
-            history = new List<string>();
+            history = new List<ClipEntry>();
             rebuild_list();
         });
         popover_box.append(clear_btn);
@@ -89,28 +96,46 @@ public class ClipboardHistoryPlugin : Object, Singularity.Plugin {
     }
 
     private void on_clipboard_changed() {
+        var formats = clipboard.get_formats();
+        // Prefer an image when the clipboard offers one, otherwise fall back to
+        // text. read_text_async returns null for image-only offers, which is
+        // why images never showed up before.
+        if (formats != null && formats.contain_gtype(typeof(Gdk.Texture))) {
+            clipboard.read_texture_async.begin(null, (obj, res) => {
+                try {
+                    var tex = clipboard.read_texture_async.end(res);
+                    if (tex != null) add_entry(new ClipEntry.with_image(tex));
+                } catch {}
+            });
+            return;
+        }
         clipboard.read_text_async.begin(null, (obj, res) => {
             try {
                 string? text = clipboard.read_text_async.end(res);
                 if (text == null || text.length == 0) return;
-                // Dedup: if same as most recent, skip
-                if (history.length() > 0 && history.data == text) return;
-                // Remove existing occurrence
-                unowned List<string>? existing = history.find_custom(text, strcmp);
-                if (existing != null) history.remove_link(existing);
-                // Prepend new entry
-                history.prepend(text);
-                // Trim to max
-                while (history.length() > MAX_ENTRIES) {
-                    history.delete_link(history.last());
-                }
-                rebuild_list();
+                add_entry(new ClipEntry.with_text(text));
             } catch {}
         });
     }
 
+    private void add_entry(ClipEntry entry) {
+        // Dedup text entries against the most recent and any earlier copy.
+        if (entry.text != null) {
+            if (history.length() > 0 && history.data.text == entry.text) return;
+            unowned List<ClipEntry>? cur = history;
+            while (cur != null) {
+                if (cur.data.text == entry.text) { history.remove_link(cur); break; }
+                cur = cur.next;
+            }
+        }
+        history.prepend(entry);
+        while (history.length() > MAX_ENTRIES) {
+            history.delete_link(history.last());
+        }
+        rebuild_list();
+    }
+
     private void rebuild_list() {
-        // Clear existing rows
         Widget? child = list_box.get_first_child();
         while (child != null) {
             Widget? next = child.get_next_sibling();
@@ -127,26 +152,40 @@ public class ClipboardHistoryPlugin : Object, Singularity.Plugin {
             return;
         }
 
-        foreach (string entry in history) {
+        foreach (ClipEntry entry in history) {
             var row = new ListBoxRow();
             var btn = new Button();
             btn.add_css_class("flat");
 
-            var preview = entry.replace("\n", " ").replace("\t", " ");
-            if (preview.char_count() > PREVIEW_LEN) {
-                preview = preview.substring(0, preview.index_of_nth_char(PREVIEW_LEN)) + "…";
+            if (entry.image != null) {
+                var pic = new Gtk.Picture.for_paintable(entry.image);
+                pic.content_fit = Gtk.ContentFit.CONTAIN;
+                pic.set_size_request(-1, 56);
+                pic.halign = Align.START;
+                btn.set_child(pic);
+                var tex = entry.image;
+                btn.clicked.connect(() => {
+                    var v = GLib.Value(typeof(Gdk.Texture));
+                    v.set_object(tex);
+                    clipboard.set_content(new Gdk.ContentProvider.for_value(v));
+                    popover.popdown();
+                });
+            } else {
+                var preview = entry.text.replace("\n", " ").replace("\t", " ");
+                if (preview.char_count() > PREVIEW_LEN) {
+                    preview = preview.substring(0, preview.index_of_nth_char(PREVIEW_LEN)) + "…";
+                }
+                var lbl = new Label(preview);
+                lbl.halign = Align.START;
+                lbl.ellipsize = Pango.EllipsizeMode.END;
+                lbl.xalign = 0;
+                btn.set_child(lbl);
+                string entry_copy = entry.text;
+                btn.clicked.connect(() => {
+                    clipboard.set_text(entry_copy);
+                    popover.popdown();
+                });
             }
-            var lbl = new Label(preview);
-            lbl.halign = Align.START;
-            lbl.ellipsize = Pango.EllipsizeMode.END;
-            lbl.xalign = 0;
-            btn.set_child(lbl);
-
-            string entry_copy = entry;
-            btn.clicked.connect(() => {
-                clipboard.set_text(entry_copy);
-                popover.popdown();
-            });
 
             row.set_child(btn);
             list_box.append(row);
