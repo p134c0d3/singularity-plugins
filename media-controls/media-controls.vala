@@ -306,7 +306,7 @@ public class MediaControlsPlugin : Object, Singularity.Plugin {
         try {
             if (url.has_prefix("file://")) {
                 var path = url.substring(7);
-                var pb = new Gdk.Pixbuf.from_file_at_size(path, 40, 40);
+                var pb = new Gdk.Pixbuf.from_file_at_size(path, 128, 128);
                 cover_img.set_from_pixbuf(pb);
             } else if (url.has_prefix("http://") || url.has_prefix("https://")) {
                 var session = new Soup.Session();
@@ -315,7 +315,7 @@ public class MediaControlsPlugin : Object, Singularity.Plugin {
                 var bytes = yield session.send_and_read_async(msg, Priority.DEFAULT, null);
                 if (bytes != null) {
                     var pb = new Gdk.Pixbuf.from_stream_at_scale(
-                        new GLib.MemoryInputStream.from_bytes(bytes), 40, 40, true, null);
+                        new GLib.MemoryInputStream.from_bytes(bytes), 128, 128, true, null);
                     cover_img.set_from_pixbuf(pb);
                 }
             } else {
