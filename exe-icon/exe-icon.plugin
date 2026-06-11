@@ -1,0 +1,6 @@
+[Plugin]
+Module=exe-icon
+Name=Windows Executable Icons
+Description=Show the embedded icon of Windows .exe files in the file manager.
+Authors=Singularity
+Copyright=Copyright © Singularity
