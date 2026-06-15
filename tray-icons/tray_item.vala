@@ -11,6 +11,7 @@ namespace Singularity.Plugins.TrayIcons {
         public Button widget { get; private set; }
 
         private GLib.DBusProxy? proxy = null;
+        private string? _icon_search_path = null;
         private Image icon_widget;
         private DBusMenuClient? menu_client = null;
 
@@ -104,6 +105,15 @@ namespace Singularity.Plugins.TrayIcons {
 
         private void update_icon() {
             if (proxy == null) return;
+
+            string? theme_path = get_string_prop("IconThemePath");
+            if (theme_path != null && theme_path.length > 0 && theme_path != _icon_search_path) {
+                var disp = Gdk.Display.get_default();
+                if (disp != null) {
+                    Gtk.IconTheme.get_for_display(disp).add_search_path(theme_path);
+                    _icon_search_path = theme_path;
+                }
+            }
 
             // 1. Try named icon
             string? name = get_string_prop("IconName");
