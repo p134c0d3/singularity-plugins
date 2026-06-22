@@ -110,7 +110,7 @@ namespace Singularity.Plugins.TrayIcons {
             // Own the watcher bus name
             watcher_bus_id = Bus.own_name_on_connection(connection,
                 "org.kde.StatusNotifierWatcher",
-                BusNameOwnerFlags.NONE,
+                BusNameOwnerFlags.REPLACE | BusNameOwnerFlags.ALLOW_REPLACEMENT,
                 () => {
                     // Name acquired - register ourselves as host
                     try {
